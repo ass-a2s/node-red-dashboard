@@ -1,13 +1,26 @@
 
-### 2.14.0-beta: Milestone Release
+### 2.14.1-beta: Maintenance Release
+
+**Enhancements**
+
+ - Allow ui_chart to have many more options set by control message, see [config-fields.md](config-fields.md)
+
+### 2.14.0: Milestone Release
+
+**Enhancements**
+
+ - Allow Tabs to be hidden or disabled dynamically from a ui_control msg.
+ - Finally remove deprecated second output from ui_chart node.
+ - Allow ui_form to be submitted with empty fields (if they are not required)
 
 **Fixes**
 
- - Finally deprecate/remove second output from ui_chart node.
  - Don't try to close non-existent menu at start (logging issue only) - Issue #470
  - Add startsWith polyfill for IE11
- - Allow ui_form to be submitted with empty fields (if they are not required)
  - Ensure active sidebar menu item is highlighted - Issue #472
+ - Sanitise display of html input - Issue #473
+ - Respect msg.socketid to return msg back to selected session when using ui_template
+ - Allow dropdown to have 0 pre-configured values, by removing validation.
 
 ### 2.13.2: Maintenance Release
 
