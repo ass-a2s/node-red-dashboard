@@ -39,6 +39,7 @@ var replayMessages = {};
 var removeStateTimers = {};
 var removeStateTimeout = 1000;
 var ev = new events.EventEmitter();
+var params = {};
 ev.setMaxListeners(0);
 
 // default manifest.json to be returned as required.
@@ -244,7 +245,9 @@ function add(opt) {
             // Emit and Store the data
             //if (settings.verbose) { console.log("UI-EMIT",JSON.stringify(toEmit)); }
             emitSocket(updateValueEventName, toEmit);
-            replayMessages[opt.node.id] = toStore;
+            if (opt.storeFrontEndInputAsState === true) {
+                replayMessages[opt.node.id] = toStore;
+            }
 
             // Handle the node output
             if (opt.forwardInputMessages && opt.node._wireCount) {
@@ -264,7 +267,7 @@ function add(opt) {
         } // don't accept input if we are in read only mode
         else {
             var converted = opt.convertBack(msg.value);
-            if (opt.storeFrontEndInputAsState) {
+            if (opt.storeFrontEndInputAsState === true) {
                 currentValues[msg.id] = converted;
                 replayMessages[msg.id] = msg;
             }
@@ -361,7 +364,7 @@ function init(server, app, log, redSettings) {
             var name = "";
             if ((index != null) && !isNaN(index) && (menu.length > 0) && (index < menu.length) && menu[index]) {
                 name = (menu[index].hasOwnProperty("header") && typeof menu[index].header !== 'undefined') ? menu[index].header : menu[index].name;
-                ev.emit("changetab", index, name, socket.client.id, socket.request.connection.remoteAddress);
+                ev.emit("changetab", index, name, socket.client.id, socket.request.connection.remoteAddress, params);
             }
         });
         socket.on('ui-refresh', function() {
@@ -372,6 +375,10 @@ function init(server, app, log, redSettings) {
         });
         socket.on('ui-audio', function(audioStatus) {
             ev.emit("audiostatus", audioStatus, socket.client.id, socket.request.connection.remoteAddress);
+        });
+        socket.on('ui-params', function(p) {
+            delete p.socketid;
+            params = p;
         });
     });
 }
