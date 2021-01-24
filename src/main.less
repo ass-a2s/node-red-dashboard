@@ -1,9 +1,28 @@
 
+@media(max-width: 959px) {
+    .md-sidenav-left, md-sidenav {
+        top: 48px !important;
+        z-index: 99;
+    }
+}
+@media (max-width: 959px) and (min-width: 0) and (orientation: portrait) {
+    md-toolbar {
+        min-height: 48px;
+        height: 48px;
+        max-height: 48px;
+    }
+}
+@media(min-width: 960px) {
+    .md-sidenav-left, md-sidenav {
+        top: 64px;
+        z-index: 99;
+    }
+}
 @media(max-width: 660px) {
     md-sidenav,
     md-sidenav.md-locked-open,
     md-sidenav.md-closed.md-locked-open-add-active {
-    	min-width: 160px !important;
+    	min-width: 64px !important;
         width: auto;
     	max-width: 200px !important;
     }
@@ -12,7 +31,7 @@
     md-sidenav,
     md-sidenav.md-locked-open,
     md-sidenav.md-closed.md-locked-open-add-active {
-    	min-width: 200px !important;
+    	min-width: 64px !important;
         width: auto;
     	max-width: 320px !important;
     }
@@ -27,17 +46,6 @@ md-sidenav md-list-item .md-list-item-inner>p {
     line-height: 20px;
 }
 
-@media(max-width: 959px) {
-    .md-sidenav-left, md-sidenav {
-        top: 56px !important;
-    }
-}
-@media(min-width: 960px) {
-    .md-sidenav-left, md-sidenav {
-        top: 64px;
-    }
-}
-
 md-toast .md-toast-content {
 	height: auto;
 }
@@ -46,18 +54,22 @@ md-toast .md-toast-error {
     font-weight: 500;
     font-size: large;
 }
-
+md-backdrop.md-sidenav-backdrop  {
+    z-index: 80;
+}
 md-card {
     box-shadow: none;
 }
 
+.md-button {
+    min-width: 64px;
+}
 .md-tooltip {
     background-color: #888 !important;
     color: #fff !important;
     border-radius: 3px;
     opacity: 1 !important;
 }
-
 .md-tooltip.md-origin-bottom {
     margin-top: -6px;
     margin-left: -8px;
@@ -68,6 +80,7 @@ md-card {
     font-family: 'Helvetica Neue', Arial, Helvetica, sans-serif;
     display: flex;
     height: 100%;
+    width: 100%;
     align-items: center;
     justify-content: center;
 	opacity: 1;
@@ -77,16 +90,14 @@ md-card {
 	animation-duration: 2.5s;
 }
 
-@keyframes fadeInOpacity {
-    0% {
-		opacity: 0;
-	}
-    30% {
-        opacity: 0;
-    }
-	100% {
-		opacity: 1;
-	}
+.node-red-ui--loading {
+    color: #888;
+    font-family: 'Helvetica Neue', Arial, Helvetica, sans-serif;
+    display: flex;
+    height: 100%;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
 }
 
 .node-red-ui--inline-link {
@@ -99,6 +110,10 @@ md-card {
 	height: 100%;
 }
 
+.material-icons {
+    vertical-align: middle;
+}
+
 .ie9 img[src$=".svg"] {
     width: 100%;
 }
@@ -107,6 +122,18 @@ md-card {
     img[src$=".svg"] {
         width: 100%;
     }
+}
+
+@keyframes fadeInOpacity {
+    0% {
+		opacity: 0;
+	}
+    30% {
+        opacity: 0;
+    }
+	100% {
+		opacity: 1;
+	}
 }
 
 @supports (-ms-overflow-style: none) {

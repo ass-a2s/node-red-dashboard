@@ -37,10 +37,12 @@
         },
         inputs:1,
         outputs:0,
+        inputLabels: function() { return this.min+" - "+this.max; },
         align: "right",
         icon: "ui_gauge.png",
         paletteLabel: 'gauge',
         label: function() { return this.name || (~this.title.indexOf("{{") ? null : this.title) || ((this.gtype === "gage") ? "gauge" : this.gtype) || 'gauge'; },
+        labelStyle: function() { return this.name?"node_label_italic":""; },
         oneditprepare: function() {
             var setColour = function(id, value) {
                 $(id).val(value);
@@ -50,7 +52,7 @@
                 var textColor = (level >= 128) ? '#111111' : '#eeeeee';
                 $(id).css("color", textColor);
             }
-            $(".gauge-color").change(function() {
+            $(".gauge-color").on("change", function() {
                 setColour("#"+$(this).attr("id"), $(this).val());
             });
 
@@ -76,13 +78,7 @@
                 height: "#node-input-height",
                 group: "#node-input-group"
             });
-            $("#node-input-gtype").change(function() {
-                if ($(this).val() === "wave") {
-                    $("#ui-gauge-format").hide();
-                }
-                else {
-                    $("#ui-gauge-format").show();
-                }
+            $("#node-input-gtype").on("change", function() {
                 if (($(this).val() === "compass") || ($(this).val() === "wave")) {
                     $("#ui-gauge-colours").hide();
                     $("#ui-gauge-segments").hide();
@@ -92,10 +88,10 @@
                     $("#ui-gauge-segments").show();
                 }
             });
-            $("#node-input-min").change(function() {
+            $("#node-input-min").on("change", function() {
                 $("#seg-min").text($(this).val());
             });
-            $("#node-input-max").change(function() {
+            $("#node-input-max").on("change", function() {
                 $("#seg-max").text($(this).val());
             });
         },
@@ -105,7 +101,7 @@
     });
 </script>
 
-<script type="text/x-red" data-template-name="ui_gauge">
+<script type="text/html" data-template-name="ui_gauge">
     <div class="form-row">
         <label for="node-input-group"><i class="fa fa-table"></i> Group</label>
         <input type="text" id="node-input-group">
@@ -118,7 +114,7 @@
     </div>
     <div class="form-row">
         <label for="node-input-gtype"><i class="fa fa-list"></i> Type</label>
-        <select id="node-input-gtype" style="width:200px !important">
+        <select id="node-input-gtype" style="width:150px">
             <option value="gage">Gauge</option>
             <option value="donut">Donut</option>
             <option value="compass">Compass</option>
@@ -148,9 +144,9 @@
     </div>
     <div class="form-row" id="ui-gauge-colours">
         <label for="node-input-color1">Colour gradient</label>
-        <input type="color" id="node-input-color1" class="gauge-color"/>
-        <input type="color" id="node-input-color2" class="gauge-color"/>
-        <input type="color" id="node-input-color3" class="gauge-color"/>
+        <input type="color" id="node-input-color1" class="gauge-color" style="width:100px;"/>
+        <input type="color" id="node-input-color2" class="gauge-color" style="width:100px;"/>
+        <input type="color" id="node-input-color3" class="gauge-color" style="width:100px;"/>
     </div>
     <div class="form-row" id="ui-gauge-segments">
         <label>Sectors</label>
@@ -165,7 +161,7 @@
     </div>
 </script>
 
-<script type="text/x-red" data-help-name="ui_gauge">
+<script type="text/html" data-help-name="ui_gauge">
     <p>Adds a gauge type widget to the user interface.</p>
     <p>The <code>msg.payload</code> is searched for a numeric <i>value</i> and is formatted in accordance with
     the defined <b>Value Format</b>, which can then be formatted using

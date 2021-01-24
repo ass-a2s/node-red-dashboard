@@ -1,14 +1,55 @@
 .nr-dashboard-dropdown md-input-container {
 	width: 100%;
 	height: 90%;
-	padding-left: 9px;
-    padding-right: 9px;
+	padding-left: 8px;
+    padding-right: 4px;
     margin: 0px;
+    margin-right: 4px;
+}
+
+.nr-dashboard-dropdown md-input-container>md-select {
+    overflow: hidden;
+    margin-left: 4px !important;
+    margin-top: 7px;
+}
+
+.nr-dashboard-theme .nr-dashboard-dropdown md-select-value {
+    min-width: 16px;
+}
+
+.nr-dashboard-theme .nr-dashboard-dropdown .md-select-value .md-select-icon {
+    margin: 0px;
+    width: 12px;
 }
 
 .nr-dashboard-dropdown p.label {
 	margin: 0px;
 	line-height: 34px;
-    margin-right: 20px;
-    white-space: nowrap;
+    margin-right: 4px;
+    margin-top: 3px;
+    padding-right: 2px;
+    white-space: normal;
+    overflow: hidden;
+    min-width: 20%;
+}
+
+.nr-dashboard-dropdown-header {
+    padding-top: 6px;
+    padding-left: 6px;
+    padding-right: 8px;
+    height: 34px;
+    cursor: pointer;
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: auto;
+}
+
+.nr-dashboard-dropdown-header input {
+    padding-left: 8px;
+}
+
+.nr-dashboard-dropdown-header ng-md-icon {
+    right: 0px;
+    left: inherit;
 }

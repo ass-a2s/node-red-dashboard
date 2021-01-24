@@ -8,7 +8,11 @@ reason: https://github.com/angular/material/issues/6214
 }
 
 .color-picker-wrapper {
-    padding-right: 8px;
+    padding-right: 12px;
+}
+
+.color-picker-wrapper.color-picker-open {
+    border-width:0;
 }
 
 .color-picker-wrapper.color-picker-swatch-only.color-picker-open {
@@ -61,12 +65,16 @@ reason: https://github.com/angular/material/issues/6214
 
 .color-picker-wrapper .input-group .color-picker-input {
     position: relative;
-    width: 123px;
+    width: 122px;
     height: 20px;
     text-indent: 6px;
     text-align: center;
     font-size: smaller;
     padding-right: 4px;
+}
+
+.color-picker-input-wrapper.input-group > span{
+    border-radius: 3px;
 }
 
 .color-picker-wrapper .color-picker-swatch:not(.input-group-addon).color-picker-swatch-right {
@@ -86,5 +94,5 @@ reason: https://github.com/angular/material/issues/6214
 }
 
 .color-picker-show-inline {
-    z-index: 77 !important;
+    z-index: 77;
 }

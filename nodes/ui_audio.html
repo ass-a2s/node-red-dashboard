@@ -18,9 +18,8 @@
         outputs:0,
         icon: "feed.png",
         align: "right",
-        label: function() {
-            return this.name||"audio out";
-        },
+        label: function() { return this.name||"audio out"; },
+        labelStyle: function() { return this.name?"node_label_italic":""; },
         onpaletteadd: function() {
             if ('speechSynthesis' in window) { voices = window.speechSynthesis.getVoices(); }
         },
@@ -32,7 +31,7 @@
                     var option = document.createElement('option');
                     option.textContent = i + " : " + voices[i].name + ' (' + voices[i].lang + ')';
                     if (voices[i].default) { option.textContent += ' -- DEFAULT'; }
-                    option.setAttribute('value', voices[i].lang);
+                    option.setAttribute('value', voices[i].voiceURI);
                     document.getElementById("node-input-voice").appendChild(option);
                 }
                 $('#node-input-voice').val(this.voice || 0);
@@ -41,7 +40,7 @@
                 $('#voice-input-row').hide();
             }
 
-            $("#node-input-voice").change(function() {
+            $("#node-input-voice").on("change", function() {
                 myvoice = this.voice = $("#node-input-voice").val();
             });
         }
@@ -49,7 +48,7 @@
 })();
 </script>
 
-<script type="text/x-red" data-template-name="ui_audio">
+<script type="text/html" data-template-name="ui_audio">
     <div class="form-row">
         <label for="node-input-group"><i class="fa fa-table"></i> Group</label>
         <input type="text" id="node-input-group">
@@ -69,12 +68,14 @@
     </div>
 </script>
 
-<script type="text/x-red" data-help-name="ui_audio">
+<script type="text/html" data-help-name="ui_audio">
     <p>Plays audio or text to speech (TTS) in the dashboard.</p>
     <p>To work the dashboard web page must be open.</p>
     <p>Expects <code>msg.payload</code> to contain a buffer of a <b>wav</b> or <b>mp3</b> file.</p>
     <p>If your browser has native support for Text-to-Speech then a <code>msg.payload</code>
     can also be a <b>string</b> to be read aloud.</p>
+    <p>Optionally setting <code>msg.level</code> from 0 to 100 will change the volume from 0 to 100%. Default is 100%.
+    In audio mode you can go up to 300, but you may get distortion.</p>
     <p>When a <code>msg.reset</code> is available with value <code>true</code>, then playback of the current audio fragment will be stopped.</p>
     <p>The <b>node status</b> reflects the current playback status:
     <ul>

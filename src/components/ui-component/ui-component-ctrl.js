@@ -1,3 +1,4 @@
+/* eslint-disable indent */
 /* global angular */
 /* global d3 */
 
@@ -16,13 +17,19 @@ angular.module('ui').controller('uiComponentController', ['$scope', 'UiEvents', 
 
             if (typeof me.item.label === "string") {
                 me.item.getLabel = $interpolate(me.item.label).bind(null, me.item);
+                me.item.safeLabel = "nr-dashboard-widget-" + (me.item.label).replace(/\W/g,'_');
             }
 
             if (typeof me.item.tooltip === "string") {
                 me.item.getTooltip = $interpolate(me.item.tooltip).bind(null, me.item);
             }
+
             if (typeof me.item.color === "string") {
                 me.item.getColor = $interpolate(me.item.color).bind(null, me.item);
+            }
+
+            if (typeof me.item.icon === "string") {
+                me.item.getIcon = $interpolate(me.item.icon).bind(null, me.item);
             }
 
             if (typeof me.item.units === "string") {
@@ -32,8 +39,22 @@ angular.module('ui').controller('uiComponentController', ['$scope', 'UiEvents', 
             me.init = function () {
                 switch (me.item.type) {
                     case 'button': {
-                        me.buttonClick = function () {
-                            me.valueChanged(0);
+                        me.buttonClick = function (e) {
+                            throttle({
+                                id:me.item.id,
+                                value:me.item.value,
+                                event: {
+                                    clientX:e.originalEvent.clientX,
+                                    clientY:e.originalEvent.clientY,
+                                    bbox:[
+                                        e.originalEvent.clientX - e.originalEvent.layerX,
+                                        e.originalEvent.clientY - e.originalEvent.layerY + e.currentTarget.clientHeight,
+                                        e.originalEvent.clientX - e.originalEvent.layerX + e.currentTarget.clientWidth,
+                                        e.originalEvent.clientY - e.originalEvent.layerY
+                                    ]
+                                }
+                            },0);
+                            //me.valueChanged(0);
                         };
                         break;
                     }
@@ -46,9 +67,29 @@ angular.module('ui').controller('uiComponentController', ['$scope', 'UiEvents', 
                     }
 
                     case 'dropdown': {
+                        me.searchTerm = '';
+                        me.selectAll = false;
+                        me.changed = false;
                         me.itemChanged = function () {
-                            me.valueChanged(0);
+                            me.searchTerm = '';
+                            if (!me.item.multiple) {
+                                me.valueChanged(0);
+                            } else {
+                                me.changed = true;
+                            }
                         };
+
+                        me.checkAll = function () {
+                            me.item.value = me.selectAll ? me.item.options.map(function(o) {return o.value}) : []
+                            me.valueChanged(0);
+                        }
+
+                        me.closed = function() {
+                            if (me.changed) {
+                                me.changed = false;
+                                me.valueChanged(0);
+                            }
+                        }
 
                         // PL dropdown
                         // processInput will be called from main.js
@@ -65,7 +106,10 @@ angular.module('ui').controller('uiComponentController', ['$scope', 'UiEvents', 
                             me.item.value = parseFloat(me.item.value);
                             if (isNaN(me.item.value)) { me.item.value = me.item.min; }
                             if (delta > 0) {
-                                if (me.item.value < me.item.max) {
+                                if ((me.item.value == me.item.max) && (me.item.wrap == true)) {
+                                    me.item.value = me.item.min;
+                                }
+                                else if (me.item.value < me.item.max) {
                                     me.item.value = Math.round(Math.min(me.item.value + delta, me.item.max)*10000)/10000;
                                 }
                                 if (me.item.value < me.item.min) {
@@ -73,7 +117,10 @@ angular.module('ui').controller('uiComponentController', ['$scope', 'UiEvents', 
                                 }
                             }
                             else if (delta < 0) {
-                                if (me.item.value > me.item.min) {
+                                if ((me.item.value == me.item.min) && (me.item.wrap == true)) {
+                                    me.item.value = me.item.max;
+                                }
+                                else if (me.item.value > me.item.min) {
                                     me.item.value = Math.round(Math.max(me.item.value + delta, me.item.min)*10000)/10000;
                                 }
                                 if (me.item.value > me.item.max) {
@@ -145,7 +192,7 @@ angular.module('ui').controller('uiComponentController', ['$scope', 'UiEvents', 
                             swatchPos: "right",
                             pos: "bottom right",
                             case: "lower",
-                            round: true,
+                            round: !me.item.square,
                             pickerOnly: me.item.showPicker && !(me.item.showSwatch || me.item.showValue)
                         };
                         me.item.key = function (event) {
@@ -164,7 +211,9 @@ angular.module('ui').controller('uiComponentController', ['$scope', 'UiEvents', 
                             }
                         }
                         $scope.$watch('me.item.value', function() {
-                            if ((me.item.dynOutput === "true") && (me.item.value !== "")) {
+                            if (!me.item.oldValue) { me.item.oldValue = me.item.value; }
+                            if ((me.item.dynOutput === "true") && (me.item.value !== me.item.oldValue)) {
+                                me.item.oldValue = me.item.value;
                                 me.valueChanged(20);
                             }
                         });
@@ -219,7 +268,7 @@ angular.module('ui').controller('uiComponentController', ['$scope', 'UiEvents', 
 
                     case 'date-picker': {
                         if (me.item.ddd !== undefined) {
-                            if (typeof me.item.ddd === "string") {
+                            if ((typeof me.item.ddd === "number")||(typeof me.item.ddd === "string")) {
                                 me.item.ddd = new Date(me.item.ddd);
                             }
                         }
@@ -236,6 +285,24 @@ angular.module('ui').controller('uiComponentController', ['$scope', 'UiEvents', 
                     }
 
                     case 'form': {
+                        me.processInput = function(msg) {
+                            if (typeof(msg.value) != 'object') { return; }
+                            for ( var key in msg.value ) {
+                                if (!me.item.formValue.hasOwnProperty(key)) { continue; }
+                                for (var x in me.item.options) {
+                                    if (me.item.options[x].type === "date" && me.item.options[x].value === key) {
+                                        msg.value[key] = new Date(msg.value[key]);
+                                    }
+                                    me.item.formValue[key] = msg.value[key];
+                                }
+                            }
+                        }
+                        me.item.extraRows = 0;
+                        me.item.options.map(function(item) {
+                            if (item.type == 'multiline' && item.rows > 1) {
+                                me.item.extraRows += item.rows - 1;
+                            }
+                        })
                         me.stop = function(event) {
                             if ((event.charCode === 13) || (event.which === 13)) {
                                 event.preventDefault();
@@ -248,17 +315,18 @@ angular.module('ui').controller('uiComponentController', ['$scope', 'UiEvents', 
                             me.reset();
                         };
                         me.reset = function () {
-                            for (var x in me.item.formValue) {
-                                if (typeof (me.item.formValue[x]) === "boolean") {
-                                    me.item.formValue[x] = false;
+                            for (var x in me.item.options) {
+                                if (me.item.options[x].type === "boolean") {
+                                    me.item.formValue[me.item.options[x].value] = false;
                                 }
                                 else {
-                                    me.item.formValue[x] = "";
+                                    me.item.formValue[me.item.options[x].value] = "";
                                 }
                             }
                             $scope.$$childTail.form.$setUntouched();
                             $scope.$$childTail.form.$setPristine();
                         };
+                        me.item.me = me;
                         break;
                     }
 
@@ -273,6 +341,28 @@ angular.module('ui').controller('uiComponentController', ['$scope', 'UiEvents', 
                         }
                         break;
                     }
+
+                    case 'slider': {
+                        me.wheel = function (e) {
+                            e.preventDefault();
+                            if (e.originalEvent.deltaY > 0) {
+                                me.item.value += me.item.step;
+                                if (me.item.value > me.item.max) { me.item.value = me.item.max; }
+                            }
+                            if (e.originalEvent.deltaY < 0) {
+                                me.item.value -= me.item.step;
+                                if (me.item.value < me.item.min) { me.item.value = me.item.min; }
+                            }
+                            me.valueChanged(0);
+                        }
+                        me.active = false;
+                        me.mdown = function() { me.active = true; };
+                        me.menter = function() { me.active = true; };
+                        me.mleave = function() { me.active = false; };
+                        me.mchange = function() { me.active = false; me.valueChanged(0); }
+                        me.mup = function() { if (me.active) { me.active = false; me.valueChanged(0); } }
+                        break;
+                    }
                 }
             }
 
@@ -283,8 +373,13 @@ angular.module('ui').controller('uiComponentController', ['$scope', 'UiEvents', 
 
             // will emit me.item.value when enter or tab is pressed or onBlur
             me.keyPressed = function (event) {
-                if ((event.charCode === 13) || (event.which === 13) || (event.which === 9) || (event.type === "blur")) {
+                if ((event.charCode === 13) || (event.which === 13)) {
                     events.emit({ id:me.item.id, value:me.item.value });
+                    me.lastItemSent = me.item.value;
+                }
+                else if ((event.type === "blur") && (me.item.value !== me.lastItemSent)) {
+                    events.emit({ id:me.item.id, value:me.item.value });
+                    me.lastItemSent = me.item.value;
                 }
             }
 
@@ -314,5 +409,4 @@ angular.module('ui').controller('uiComponentController', ['$scope', 'UiEvents', 
                 }
             };
         }
-
     }]);

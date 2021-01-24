@@ -1,7 +1,7 @@
 <style>
     :root {
         --nr-db-dark-text: #444;
-        --nr-db-light-text: #eeeeee;
+        --nr-db-light-text: #eee;
         --nr-db-disabled-text: #999;
     }
     .nr-db-sb {
@@ -157,11 +157,10 @@
         border-radius: 3px;
         margin-left: 15px;
     }
-    input.nr-db-field-themeColor {
+    input.nr-db-field-themeColor[type="color"] {
         width: 60px !important;
         padding: 0px;
         height: 20px;
-        border: none;
         box-shadow: none;
         position: absolute;
         right: 36px;
@@ -201,7 +200,7 @@
         list-style: none;
     }
     ul.red-ui-dashboard-theme-styles li {
-        margin-bottom: 10px;
+        margin-bottom: 6px;
     }
     .nr-db-resetIcon {
         margin: 3px 6px 0px 6px;
@@ -225,13 +224,115 @@
     }
 </style>
 
+<!-- Dashboard layout tool -->
+<link rel="stylesheet" href="./ui_base/gs/gridstack.min.css">
+<link rel="stylesheet" href="./ui_base/css/gridstack-extra.min.css">
+<style>
+.grid-stack {
+    background-color: #f8f8f8;
+    border: solid 2px #C0C0C0;
+    margin: auto;
+    min-height: 42px;
+    display: table-cell;
+    background-image: linear-gradient(#C0C0C0 1px, transparent 0),
+                      linear-gradient(90deg, #C0C0C0 1px, transparent 0);
+    background-size: 40px 43px;
+}
+.grid-stack>.grid-stack-item>.grid-stack-item-content {
+    top: 3px;
+    left: 5px;
+    right: 5px;
+    bottom: 3px;
+}
+.grid-stack-item-content {
+    color: #2c3e50;
+    text-align: center;
+    background-color: #b0dfe3;
+    border-radius: 2px;
+    font-family: 'Helvetica Neue', Arial, Helvetica, sans-serif;
+    white-space: nowrap;
+    font-size: 12px;
+    opacity: 0.7;
+}
+.grid-stack-item {
+    cursor: move;
+}
+.nr-dashboard-layout-container-fluid {
+  width: 100%;
+  padding-right: 0px;
+  padding-left: 0px;
+  margin-right: 0px;
+  margin-left: 0px;
+}
+.nr-dashboard-layout-row {
+  width: 100%;
+  display: -ms-flexbox;
+  display: flex;
+  -ms-flex-wrap: wrap;
+  flex-wrap: wrap;
+  margin-right: 0px;
+  margin-left: 0px;
+}
+.nr-dashboard-layout-span12 {
+  width: 98.4%;
+  padding: 2px;
+  margin-left: 2px;
+}
+.nr-dashboard-layout-span6 {
+  width: 49.2%;
+  padding: 2px;
+  margin-left: 2px;
+}
+.nr-dashboard-layout-span4 {
+  width: 32.7%;
+  padding: 2px;
+  margin-left: 2px;
+}
+.nr-dashboard-layout-span3 {
+  width: 24.3%;
+  padding: 2px;
+  margin-left: 2px;
+}
+.nr-dashboard-layout-span2 {
+  width: 16.0%;
+  padding: 2px;
+  margin-left: 2px;
+}
+.nr-dashboard-layout-resize-disable {
+    cursor: pointer;
+    float: right;
+    position: relative;
+    z-index: 90;
+    margin-right: 4px;
+}
+.nr-dashboard-layout-resize-enable {
+    cursor: pointer;
+    float: right;
+    position: relative;
+    z-index: 90;
+    margin-right: 1px;
+}
+.grid-stack>.ui-state-disabled {
+    opacity: 1;
+    background-image: none;
+}
+.grid-stack>.grid-stack-item>.ui-resizable-handle {
+    z-index: 90;
+    margin-right: -7px;
+}
+</style>
+
+
 <script type="text/javascript">
 (function($) {
     var editSaveEventHandler;
     var nodesAddEventHandler;
     var nodesRemoveEventHandler;
+    var layoutUpdateEventHandler; // Dashboard layout tool
     var uip = 'ui';
     var attemptedVendorLoad = false;
+    var ensureDashboardNode;
+
     var loadTinyColor = function(path) {
         $.ajax({ url: path,
             success: function (data) {
@@ -246,6 +347,7 @@
                     loadTinyColor('/'+uip+'/vendor/tinycolor2/dist/tinycolor-min.js');
                     attemptedVendorLoad = true;
                 }
+                //console.log('Tiny Color Failed to load:',path);
             }
         });
     }
@@ -260,7 +362,529 @@
     loadTinyColor('ui_base/js/tinycolor-min.js');
     //loadTinyColor('ui_base/tinycolor2/dist/tinycolor-min.js');
 
-    RED.nodes.registerType('ui_base',{
+    // Dashboard layout tool
+    // Load gridstack library
+    var loadGsLib = function(path, callback) {
+        $.ajax({ url: path,
+            success: function (data) {
+                var jsScript = document.createElement("script");
+                jsScript.type = "application/javascript";
+                jsScript.src = path;
+                document.body.appendChild(jsScript);
+                if (callback) { callback(); }
+            },
+            error: function (xhr, ajaxOptions, thrownError) {
+                // TODO
+            }
+        });
+    };
+
+    loadGsLib('ui_base/gs/gridstack.min.js', function() {
+        loadGsLib('ui_base/gs/gridstack.jQueryUI.min.js', null)
+    });
+
+    var tabDatas; // Layout editing tab data
+    var oldSpacer; // Spacer not needed after editing
+    var widthChange; // Group width change
+    var widgetResize; // Change widget event
+    var widgetDrag; // Drag wiget event
+
+    var MAX_GROUP_WIDTH = 30; // The maximum width is 30
+
+    /////////////////////////////////////////////////////////
+    // Get widget under specified tab from node information
+    /////////////////////////////////////////////////////////
+    function getTabDataFromNodes(tabID) {
+        var nodes = RED.nodes.createCompleteNodeSet(false);
+        var tab = {};
+        // Tab information
+        for (var cnt = 0; cnt < nodes.length; cnt++) {
+            if (nodes[cnt].type == "ui_tab" && nodes[cnt].id == tabID) {
+                tab = {
+                    id: nodes[cnt].id,
+                    name: nodes[cnt].name,
+                    type: nodes[cnt].type,
+                    order: nodes[cnt].order,
+                    groups: []
+                };
+                break;
+            }
+        }
+        // Group information
+        for (var cnt = 0; cnt < nodes.length; cnt++) {
+            if (nodes[cnt].type == "ui_group" && nodes[cnt].tab == tabID) {
+                var group = {
+                    id: nodes[cnt].id,
+                    name: nodes[cnt].name,
+                    type: nodes[cnt].type,
+                    order: nodes[cnt].order,
+                    width: nodes[cnt].width,
+                    widgets: []
+                };
+                tab.groups.push(group);
+            }
+        }
+        // Widget information
+        var groupsIdx = {};
+        for  (var cnt = 0; cnt < tab.groups.length; cnt++) {
+            groupsIdx[tab.groups[cnt].id] = tab.groups[cnt];
+        }
+        for (var cnt = 0; cnt < nodes.length; cnt++) {
+            var group = groupsIdx[nodes[cnt].group];
+            if (group != null && (/^ui_/.test(nodes[cnt].type) && nodes[cnt].type !== 'ui_link' && nodes[cnt].type !== 'ui_toast' && nodes[cnt].type !== 'ui_ui_control' && nodes[cnt].type !== 'ui_audio' && nodes[cnt].type !== 'ui_base' && nodes[cnt].type !== 'ui_group' && nodes[cnt].type !== 'ui_tab')) {
+                var widget = {
+                    id: nodes[cnt].id,
+                    type: nodes[cnt].type,
+                    order: nodes[cnt].order,
+                    width: nodes[cnt].width,
+                    height: nodes[cnt].height,
+                    auto: nodes[cnt].width == 0 ? true : false
+                };
+                group.widgets.push(widget);
+
+                if (!isLayoutToolSupported(nodes[cnt].type)) {
+                    console.log("LayoutTool warning: Unsupported widget. Widget="+JSON.stringify(widget));
+                }
+            }
+        }
+        return tab;
+    }
+
+    //////////////////////////////////////////////////
+    // Update node information in the edited widget
+    ////////////////////////////////////////////////////
+    function putTabDataToNodes() {
+        // Delete old flow spacer node
+        for (var cnt = 0; cnt < oldSpacer.length; cnt++) {
+            RED.nodes.remove(oldSpacer[cnt]);
+            RED.nodes.dirty(true);
+            RED.view.redraw(true);
+        }
+
+        var t_groups = tabDatas.groups;
+        for (var cnt1 = 0; cnt1 < t_groups.length; cnt1++) {
+            var n_group = RED.nodes.node(t_groups[cnt1].id);
+            n_group.width = t_groups[cnt1].width;
+            var t_widgets = t_groups[cnt1].widgets;
+            for (var cnt2 = 0; cnt2 < t_widgets.length; cnt2++) {
+                var n_widget = RED.nodes.node(t_widgets[cnt2].id);
+                if (n_widget != null) {
+                    if (n_widget.group !== n_group.id) {
+                        var oldGroupNode = RED.nodes.node(n_widget.group);
+                        if (oldGroupNode) {
+                            var index = oldGroupNode.users.indexOf(n_widget);
+                            oldGroupNode.users.splice(index,1);
+                        }
+                        n_widget.group = n_group.id;
+                        n_group.users.push(n_widget);
+                    }
+                    n_widget.order = t_widgets[cnt2].order;
+                    if (t_widgets[cnt2].auto === true ) {
+                        n_widget.width = 0;
+                        n_widget.height = 0;
+                    } else {
+                        n_widget.width = t_widgets[cnt2].width;
+                        n_widget.height = t_widgets[cnt2].height;
+                    }
+
+                    n_widget.changed = true;
+                    n_widget.dirty = true;
+                    RED.editor.validateNode(n_widget);
+                    RED.events.emit("layout:update",n_widget);
+                    RED.nodes.dirty(true);
+                    RED.view.redraw(true);
+                }
+                else {
+                    // Add a spacer node
+                    if (t_widgets[cnt2].type === 'ui_spacer') {
+                        var spaceNode = {
+                            _def: RED.nodes.getType("ui_spacer"),
+                            type: "ui_spacer",
+                            hasUsers: false,
+                            users: [],
+                            id: RED.nodes.id(),
+                            tab: tabDatas.id,
+                            group: n_group.id,
+                            order: t_widgets[cnt2].order,
+                            name: "spacer",
+                            width: t_widgets[cnt2].width,
+                            height: t_widgets[cnt2].height,
+                            label: function() { return this.name + " " + this.width + "x" + this.height; }
+                        };
+                        RED.nodes.add(spaceNode);
+                        RED.nodes.dirty(true);
+                        RED.view.redraw(true);
+                    }
+                }
+            };
+        }
+        RED.sidebar.info.refresh();
+    }
+
+    ////////////////////////////////////////
+    // Sort by order
+    ////////////////////////////////////////
+    function compareOrder(a, b) {
+        var r = 0;
+        if (a.order < b.order) { r = -1; }
+        else if (a.order > b.order) { r = 1; }
+        return r;
+    }
+
+    ////////////////////////////////////////
+    // Sort by XY
+    ////////////////////////////////////////
+    function compareXY(a, b) {
+        var r = 0;
+        if (a.y < b.y) { r = -1; }
+        else if (a.y > b.y) { r = 1; }
+        else if (a.x < b.x) { r = -1; }
+        else if (a.x > b.x) { r = 1; }
+        return r;
+    }
+
+    ///////////////////////////////////////////////////////
+    // Placeable location search (placed in the upper left)
+    ///////////////////////////////////////////////////////
+    function search_point(width, height, maxWidth, maxHeight, tbl) {
+        for (var y=0; y < maxHeight; y++) {
+            for (var x=0; x < maxWidth; x++) {
+                if (check_matrix(x, y, width, height, maxWidth, tbl)) {
+                    fill_matrix(x, y, width, height, maxWidth, tbl);
+                    return  {x:x, y:y};
+                }
+            }
+        }
+        return false;
+    }
+    // Check placement position
+    function check_matrix(px, py, width, height, maxWidth, tbl) {
+        if (px+width > maxWidth) return false;
+        for (var y=py; y < py+height; y++) {
+            for (var x=px; x<px+width; x++) {
+                if (tbl[maxWidth*y+x]) return false;
+            }
+        }
+        return true;
+    }
+    // Mark the placement position
+    function fill_matrix(px, py, width, height, maxWidth, tbl) {
+        for (var y=py; y < py+height; y++) {
+            for (var x=px; x < px+width; x++) {
+                tbl[maxWidth*y+x] = 1;
+            }
+        }
+    }
+
+    ////////////////////////////////////////////////////
+    // Apply edit result to tab information for editing
+    ////////////////////////////////////////////////////
+    function saveGridDatas() {
+        var groups = tabDatas.groups;
+        for (var cnt = 0; cnt < groups.length; cnt++) {
+            // Get layout editing results
+            var gridID = '#grid'+cnt;
+            var serializedData = [];
+            $(gridID+'.grid-stack > .grid-stack-item:visible').each( function (index) {
+                el = $(this);
+                var node = el.data('_gridstack_node');
+                serializedData.push({
+                    id: el[0].dataset.noderedid,
+                    type: el[0].dataset.noderedtype,
+                    group: groups[cnt].id,
+                    width: Number(node.width),
+                    height: Number(node.height),
+                    x: node.x,
+                    y: node.y,
+                    auto: (el[0].dataset.noderedsizeauto == 'true') ? true : false
+                });
+            });
+
+            var width = Number(groups[cnt].width);
+            var height = 0;
+
+            // Search group height
+            for (var i=0; i < serializedData.length; i++) {
+                var wd = serializedData[i];
+                if (height < wd.y + wd.height) {
+                    height = wd.y + wd.height;
+                }
+            }
+
+            // Place widget on table
+            var tbl = new Array(width * height);
+            for (var i = 0; i< tbl.length; i++) {
+                tbl[i]=0;
+            }
+            for (var i = 0; i < serializedData.length; i++) {
+                var wd = serializedData[i];
+                for (var y = wd.y; y < wd.y+wd.height; y++) {
+                    for (var x = wd.x; x < wd.x+wd.width; x++) {
+                        tbl[width*y+x]=1;
+                    }
+                }
+            }
+
+            // Add Spacer to Blank
+            for (var y = 0; y < height; y++) {
+                var spacerAdded = false;
+                for (var x = 0; x < width; x++) {
+                    if (tbl[width*y+x]===0) {
+                        if (!spacerAdded) {
+                            // Add 1x1 spacer
+                            serializedData.push({
+                                x: x,
+                                y: y,
+                                width: 1,
+                                height: 1,
+                                name: 'spacer',
+                                type: 'ui_spacer'
+                            });
+                            spacerAdded = true;
+                        } else {
+                            // Extend the spacer width by 1
+                            serializedData[serializedData.length-1].width += 1;
+                        }
+                    } else {
+                        spacerAdded = false;
+                    }
+                }
+            }
+
+            // Sort Gridstack objects by x, y information
+            serializedData.sort(compareXY);
+
+            // Delete x and y elements as information for sorting, and give order
+            var order = 0;
+            for (i in serializedData) {
+                order++;
+                delete serializedData[i].x;
+                delete serializedData[i].y;
+                serializedData[i].order = order;
+            }
+
+            // Update widget information in group with edited data
+            var group = groups[cnt];
+            delete group.widgets;
+            group.widgets = serializedData;
+        }
+
+        // Save process call
+        putTabDataToNodes();
+    };
+
+    ////////////////////////////////////////////////////
+    // Get default height for automatic settings
+    ////////////////////////////////////////////////////
+    function getDefaultHeight(nodeID, groupWidth) {
+        var redNode = RED.nodes.node(nodeID);
+        var height = 1;
+
+        if (redNode.type === 'ui_gauge') {
+            if (redNode.gtype === 'gage') {
+                height = Math.round(groupWidth/2)+1;
+            } else if (redNode.gtype === 'wave') {
+                if (groupWidth < 3) {
+                    height = 1;
+                } else {
+                    height = Math.round(groupWidth*0.75);
+                }
+            } else { // donut or compass
+                if (groupWidth < 3) {
+                    height = 1;
+                } else if (groupWidth < 11) {
+                    height = groupWidth - 1;
+                } else {
+                    height = Math.round(groupWidth*0.95);
+                }
+            }
+        } else if (redNode.type === 'ui_chart') {
+            height = Math.floor(groupWidth/2)+1;
+        } else if (redNode.type === 'ui_form') {
+            var optNum = redNode.options.length; // Sub widget number
+            if (redNode.label) {
+                height = optNum + 2; // Label and Button
+            } else {
+                height = optNum + 1; // Button only
+            }
+        } else if (redNode.type === 'ui_lineargauge') {
+            if (redNode.unit && redNode.name) {
+                height = 5;
+            } else {
+                height = 4;
+            }
+        } else if (redNode.type === 'ui_list') {
+            height = 5;
+        } else if (redNode.type === 'ui_vega') {
+            height = 5;
+        }
+        return height;
+    }
+
+    /////////////////////////////
+    // Grid width change
+    ////////////////////////////
+    var changeGroupWidth = function(id) {
+        var widthID = '#change-width'+id;
+        var gridID = '#grid'+id;
+        $(widthID).spinner( {
+            min: 1,
+            max: MAX_GROUP_WIDTH,
+            spin: function(event, ui) {
+                // Search current maximum width
+                var serializedData = [];
+                $(gridID+'.grid-stack > .grid-stack-item:visible').each( function (index) {
+                    el = $(this);
+                    var node = el.data('_gridstack_node');
+                    serializedData.push({
+                        width: Number(node.width),
+                        x: node.x,
+                        auto: (el[0].dataset.noderedsizeauto == 'true') ? true : false
+                    });
+                });
+                var maxWidth = 0;
+                for (var i=0; i < serializedData.length; i++) {
+                    var wd = serializedData[i];
+                    if (wd.auto == false) {
+                        if (maxWidth < wd.x + wd.width) {
+                            maxWidth = wd.x + wd.width;
+                        }
+                    }
+                }
+                var width = ui.value;
+                if (width < maxWidth) {
+                    width = maxWidth;
+                }
+
+                var grid = $(gridID+'.grid-stack').data('gridstack');
+                $(gridID+'.grid-stack').css("width", width * 40);
+                $(gridID+'.grid-stack').css("background-size", 100/width+"% 43px");
+                grid.setColumn(tabDatas.groups[id].width, true);
+                grid.setColumn(width, true);
+                tabDatas.groups[id].width = width;
+
+                $(gridID+'.grid-stack > .grid-stack-item:visible').each( function(idx, el) {
+                    el = $(el);
+                    var node = el.data('_gridstack_node');
+                    var auto = (el[0].dataset.noderedsizeauto == 'true') ? true : false;
+                    var type = el[0].dataset.noderedtype;
+                    grid.resizable(el, !auto);
+                    if (auto === true) {
+                        grid.resize(el, width, getDefaultHeight(node.id, width));
+                    }
+                });
+
+                if (width !== ui.value) {
+                    event.stopPropagation();
+                    event.preventDefault();
+                }
+            }
+        });
+    };
+
+    //////////////////////////////////
+    // Move between groups of widgets
+    //////////////////////////////////
+    function handleMove(grid) {
+        return function(ev, prevWidget, newWidget) {
+            var elem = newWidget.el[0];
+            if (elem.getAttribute("data-noderedsizeauto") === "true") {
+                var id = elem.getAttribute("data-noderedid");
+                var width = grid.grid.column;
+                var height = getDefaultHeight(id, width);
+                grid.move(elem, 0, newWidget.y);
+                grid.resize(elem, width, height);
+
+                var en = $(elem).find('.nr-dashboard-layout-resize-enable');
+                en.off('click');
+                en.on('click',layoutResizeEnable);
+                en[0].setAttribute("title",c_("layout.auto"));
+            }
+            else {
+                var ds = $(elem).find('.nr-dashboard-layout-resize-disable');
+                ds.off('click');
+                ds.on('click',layoutResizeDisable);
+                ds[0].setAttribute("title",c_("layout.manual"));
+            }
+        };
+    }
+
+    //////////////////////////////////////////
+    // Widget size change (start event)
+    //////////////////////////////////////////
+    var resizeGroupWidget = function(id) {
+        var gridID = '#grid'+id;
+        var grid = $(gridID+'.grid-stack').data('gridstack');
+        $(gridID+'.grid-stack').on('resizestart', function(event, ui) {
+            // Reset group width
+            grid.setColumn(tabDatas.groups[id].width, true);
+        });
+    }
+
+    //////////////////////////////////////////
+    // Widget drag (start event)
+    //////////////////////////////////////////
+    var dragGroupWidget = function(id) {
+        var gridID = '#grid'+id;
+        var grid = $(gridID+'.grid-stack').data('gridstack');
+        $(gridID+'.grid-stack').on('dragstart', function(event, ui) {
+            // Reset group width
+            grid.setColumn(tabDatas.groups[id].width, true);
+        });
+    }
+
+    //////////////////////////////////////////
+    // Layout resize Disable (Auto:false)
+    //////////////////////////////////////////
+    var layoutResizeDisable = function(e) {
+        var target = $(e.target);
+        var el = target.parents('.grid-stack-item:visible');
+        var grid = target.parents('.grid-stack').data('gridstack');
+        var node = el.data('_gridstack_node');
+        var id = Number(target.parents('.grid-stack').attr('id').slice(4));
+        var width = Number(tabDatas.groups[id].width);
+        var nodeID = el[0].dataset.noderedid;
+        var height = getDefaultHeight(nodeID, width);
+
+        grid.move(el, 0, node.y);
+        grid.resize(el, width, height);
+        grid.resizable(el, false);
+        el.find('.nr-dashboard-layout-resize-disable').off('click');
+        el.attr({'data-noderedsizeauto':'true'});
+        target.removeClass().addClass('fa fa-unlock nr-dashboard-layout-resize-enable');
+        el.find('.nr-dashboard-layout-resize-enable')[0].setAttribute("title",c_("layout.auto"));
+        el.find('.nr-dashboard-layout-resize-enable').on('click',layoutResizeEnable);
+    }
+
+    //////////////////////////////////////////
+    // Layout resize Enable (Auto:true)
+    //////////////////////////////////////////
+    var layoutResizeEnable = function(e) {
+        var target = $(e.target);
+        var el = target.parents('.grid-stack-item:visible');
+        var grid = target.parents('.grid-stack').data('gridstack');
+
+        grid.resizable(el, true);
+        el.find('.nr-dashboard-layout-resize-enable').off('click');
+        el.attr({'data-noderedsizeauto':'false'});
+        target.removeClass().addClass('fa fa-lock nr-dashboard-layout-resize-disable');
+        el.find('.nr-dashboard-layout-resize-disable')[0].setAttribute("title",c_("layout.manual"));
+        el.find('.nr-dashboard-layout-resize-disable').on('click',layoutResizeDisable);
+    }
+
+    //////////////////////////////////////////
+    // Check dashboard layout tool supported
+    //////////////////////////////////////////
+    function isLayoutToolSupported(nodeType) {
+        if (nodeType.indexOf("ui_") !== 0) {
+            return false;
+        }
+        else {
+            return true;
+        }
+    }
+
+    RED.nodes.registerType('ui_base', {
             category: 'config',
             defaults: {
                 name: {},
@@ -276,6 +900,7 @@
                 RED.events.off("editor:save",editSaveEventHandler);
                 RED.events.off("nodes:add",nodesAddEventHandler);
                 RED.events.off("nodes:remove",nodesRemoveEventHandler);
+                RED.events.off("layout:update",layoutUpdateEventHandler); // Dashboard layout tool
             },
             onpaletteadd: function() {
                 var globalDashboardNode = null;
@@ -325,7 +950,8 @@
                         return pageBackground;
                     },
                     calculate_page_sidebar_backgroundColor: function(base) {
-                        return this.whiteBlackLeastReadable(base);
+                        if (this.whiteBlackLeastReadable(base) === "#000000") { return "#333333"; }
+                        else { return "#ffffff"; }
                     },
                     calculate_page_titlebar_backgroundColor: function(base) {
                         return base;
@@ -393,7 +1019,7 @@
                     py: 0  // padding of group's cards
                 };
 
-                function ensureDashboardNode(createMissing) {
+                ensureDashboardNode = function(createMissing) {
                     if (globalDashboardNode !== null) {
                         // Check if it has been deleted beneath us
                         var n = RED.nodes.node(globalDashboardNode.id);
@@ -412,6 +1038,7 @@
                         // at some point we may want to make this an option to select one or the other.
                         while (bases.length > 1) {
                             var n = bases.pop();
+                            console.log("Removing ui_base node "+n.id);
                             RED.nodes.remove(n.id);
                             RED.nodes.dirty(true);
                         }
@@ -535,11 +1162,11 @@
                     var re = new RegExp('\/{1,}','g');
                     lnk = lnk.replace(re,'/');
                     if (!RED.hasOwnProperty("actions")) {
-                        RED.keyboard.add("*",/* d */ 68,{ctrl:true, shift:true},function() { window.open(document.location.protocol+"//"+lnk) });
+                        RED.keyboard.add("*",/* d */ 68,{ctrl:true, shift:true},function() { window.open(document.location.protocol+"//"+lnk, "nr-dashboard") });
                     }
                     else {
+                        RED.actions.add("dashboard:show-dashboard",function() { window.open(document.location.protocol+"//"+lnk, "nr-dashboard") });
                         RED.keyboard.add("*","ctrl-shift-d","dashboard:show-dashboard");
-                        RED.actions.add("dashboard:show-dashboard",function() { window.open(document.location.protocol+"//"+lnk) });
                     }
                     $('<span id="dash-link-button" class="editor-button" style="position:absolute; right:0px;"><i class="fa fa-external-link"></i></span>')
                     .click(function(evt) {
@@ -599,9 +1226,9 @@
                 var divTitle = $('<div>',{class:"form-row compact"}).appendTo(siteTab);
                 $('<div>').html('<b>'+c_("label.title")+'</b>').appendTo(divTitle);
                 $('<input type="text" id="nr-db-field-title">').val(site_name).css("width","100%")
-                .change(function() {
+                .on("change", function() {
                     if (!globalDashboardNode || globalDashboardNode.site.name !== $(this).val()) {
-                        ensureDashboardNode(true);
+                        //ensureDashboardNode(true);
                         globalDashboardNode.site.name = $(this).val();
                         RED.nodes.dirty(true);
                     }
@@ -615,9 +1242,9 @@
                 .append($('<option>', { value:"false", text:c_("title-bar.show"), selected:true }))
                 .append($('<option>', { value:"true", text:c_("title-bar.hide") }))
                 .val("false")
-                .change(function() {
+                .on("change", function() {
                     if (!globalDashboardNode || globalDashboardNode.site.hideToolbar !== $(this).val()) {
-                        ensureDashboardNode(true);
+                        //ensureDashboardNode(true);
                         globalDashboardNode.site.hideToolbar = $(this).val();
                         RED.nodes.dirty(true);
                     }
@@ -629,10 +1256,11 @@
                 .css("width","100%")
                 .append($('<option>', { value:"false", text:c_("lock.clicked"), selected:true }))
                 .append($('<option>', { value:"true", text:c_("lock.locked") }))
+                .append($('<option>', { value:"icon", text:c_("lock.locked-icon") }))
                 .val("false")
-                .change(function() {
+                .on("change", function() {
                     if (!globalDashboardNode || globalDashboardNode.site.lockMenu !== $(this).val()) {
-                        ensureDashboardNode(true);
+                        //ensureDashboardNode(true);
                         globalDashboardNode.site.lockMenu = $(this).val();
                         RED.nodes.dirty(true);
                     }
@@ -645,9 +1273,9 @@
                 .append($('<option>', { value:"false", text:c_("swipe.no-swipe"), selected:true }))
                 .append($('<option>', { value:"true", text:c_("swipe.allow-swipe") }))
                 .val("false")
-                .change(function() {
+                .on("change", function() {
                     if (!globalDashboardNode || globalDashboardNode.site.allowSwipe !== $(this).val()) {
-                        ensureDashboardNode(true);
+                        //ensureDashboardNode(true);
                         globalDashboardNode.site.allowSwipe = $(this).val();
                         RED.nodes.dirty(true);
                     }
@@ -661,9 +1289,9 @@
                 .append($('<option>', { value:"false", text:c_("temp.no-theme") }))
                 .append($('<option>', { value:"none", text:c_("temp.none") }))
                 .val("true")
-                .change(function() {
+                .on("change", function() {
                     if (!globalDashboardNode || globalDashboardNode.site.allowTempTheme !== $(this).val()) {
-                        ensureDashboardNode(true);
+                        //ensureDashboardNode(true);
                         globalDashboardNode.site.allowTempTheme = $(this).val();
                         RED.nodes.dirty(true);
                     }
@@ -691,9 +1319,9 @@
                 .css("float","right")
                 .appendTo(divDateFormat);
                 $('<input type="text" id="nr-db-field-dateFormat">').val(site_date_format).css("width","100%")
-                .change(function() {
+                .on("change", function() {
                     if (!globalDashboardNode || globalDashboardNode.site.dateFormat !== $(this).val()) {
-                        ensureDashboardNode(true);
+                        //ensureDashboardNode(true);
                         globalDashboardNode.site.dateFormat = $(this).val();
                         RED.nodes.dirty(true);
                     }
@@ -721,40 +1349,55 @@
 
                 $('<br/><span style="width:45%; display:inline-block">').text(c_("label.widget-size")).appendTo(divSetSizes);
                 $('<input type="number" name="sx" min="24" id="nr-db-field-sx">').val(48).css("width","20%")
-                .change(function() { ensureDashboardNode(true); globalDashboardNode.site.sizes.sx=Number($(this).val()); RED.nodes.dirty(true); } )
+                .on("change", function() {
+                    //ensureDashboardNode(true);
+                    globalDashboardNode.site.sizes.sx=Number($(this).val()); RED.nodes.dirty(true); } )
                 .appendTo(divSetSizes);
                 $('<span style="width:5%; display:inline-block">').text(' ').appendTo(divSetSizes);
                 $('<input type="number" name="sy" min="24" id="nr-db-field-sy">').val(48).css("width","20%")
-                .change(function() { ensureDashboardNode(true); globalDashboardNode.site.sizes.sy=Number($(this).val()); RED.nodes.dirty(true); } )
+                .on("change", function() {
+                    //ensureDashboardNode(true);
+                    globalDashboardNode.site.sizes.sy=Number($(this).val()); RED.nodes.dirty(true); } )
                 .appendTo(divSetSizes);
 
                 $('<br/><span style="width:45%; display:inline-block">').text(c_("label.widget-spacing")).appendTo(divSetSizes);
                 $('<input type="number" name="cx" min="0" id="nr-db-field-cx">').val(6).css("width","20%")
-                .change(function() { ensureDashboardNode(true); globalDashboardNode.site.sizes.cx=Number($(this).val()); RED.nodes.dirty(true); } )
+                .on("change", function() {
+                    //ensureDashboardNode(true);
+                    globalDashboardNode.site.sizes.cx=Number($(this).val()); RED.nodes.dirty(true); } )
                 .appendTo(divSetSizes);
                 $('<span style="width:5%; display:inline-block">').text(' ').appendTo(divSetSizes);
                 $('<input type="number" name="cy" min="0" id="nr-db-field-cy">').val(6).css("width","20%")
-                .change(function() { ensureDashboardNode(true); globalDashboardNode.site.sizes.cy=Number($(this).val()); RED.nodes.dirty(true); } )
+                .on("change", function() {
+                    //ensureDashboardNode(true);
+                    globalDashboardNode.site.sizes.cy=Number($(this).val()); RED.nodes.dirty(true); } )
                 .appendTo(divSetSizes);
 
                 $('<br/><span style="width:45%; display:inline-block">').text(c_("label.group-padding")).appendTo(divSetSizes);
                 $('<input type="number" name="px" min="0" id="nr-db-field-px">').val(0).css("width","20%")
-                .change(function() { ensureDashboardNode(true); globalDashboardNode.site.sizes.px=Number($(this).val()); RED.nodes.dirty(true); } )
+                .on("change", function() {
+                    //ensureDashboardNode(true);
+                    globalDashboardNode.site.sizes.px=Number($(this).val()); RED.nodes.dirty(true); } )
                 .appendTo(divSetSizes);
                 $('<span style="width:5%; display:inline-block">').text(' ').appendTo(divSetSizes);
                 $('<input type="number" name="py" min="0" id="nr-db-field-py">').val(0).css("width","20%")
-                .change(function() { ensureDashboardNode(true); globalDashboardNode.site.sizes.py=Number($(this).val()); RED.nodes.dirty(true); } )
+                .on("change", function() {
+                    //ensureDashboardNode(true);
+                    globalDashboardNode.site.sizes.py=Number($(this).val()); RED.nodes.dirty(true); } )
                 .appendTo(divSetSizes);
 
                 $('<br/><span style="width:45%; display:inline-block">').text(c_("label.group-spacing")).appendTo(divSetSizes);
                 $('<input type="number" name="gx" min="0" id="nr-db-field-gx">').val(6).css("width","20%")
-                .change(function() { ensureDashboardNode(true); globalDashboardNode.site.sizes.gx=Number($(this).val()); RED.nodes.dirty(true); } )
+                .on("change", function() {
+                    //ensureDashboardNode(true);
+                    globalDashboardNode.site.sizes.gx=Number($(this).val()); RED.nodes.dirty(true); } )
                 .appendTo(divSetSizes);
                 $('<span style="width:5%; display:inline-block">').text(' ').appendTo(divSetSizes);
                 $('<input type="number" name="gy" min="0" id="nr-db-field-gy">').val(6).css("width","20%")
-                .change(function() { ensureDashboardNode(true); globalDashboardNode.site.sizes.gy=Number($(this).val()); RED.nodes.dirty(true); } )
+                .on("change", function() {
+                    //ensureDashboardNode(true);
+                    globalDashboardNode.site.sizes.gy=Number($(this).val()); RED.nodes.dirty(true); } )
                 .appendTo(divSetSizes);
-
 
                 // Angular Theme Tab
                 var changed = function() {
@@ -782,7 +1425,7 @@
                 $('<select id="nr-db-field-angPrimary">'+angColors+'</select>')
                     .css("width","100%")
                     .val(aTheme.primary)
-                    .change(function() { aTheme.primary = $(this).val(); changed(); })
+                    .on("change", function() { aTheme.primary = $(this).val(); changed(); })
                     .appendTo(divPrimStyle);
 
                 var divAccStyle = $('<div>',{class:"form-row"}).appendTo(angularTab);
@@ -800,7 +1443,7 @@
                 $('<select id="nr-db-field-angAccents">'+angColors+'</select>')
                     .css("width","100%")
                     .val(aTheme.accents)
-                    .change(function() { aTheme.accents = $(this).val(); changed(); })
+                    .on("change", function() { aTheme.accents = $(this).val(); changed(); })
                     .appendTo(divAccStyle);
 
                 var divWarnStyle = $('<div>',{class:"form-row"}).appendTo(angularTab);
@@ -818,7 +1461,7 @@
                 $('<select id="nr-db-field-angWarn">'+angColors+'</select>')
                     .css("width","100%")
                     .val(aTheme.warn)
-                    .change(function() { aTheme.warn = $(this).val(); changed(); })
+                    .on("change", function() { aTheme.warn = $(this).val(); changed(); })
                     .appendTo(divWarnStyle);
 
                 var divBackStyle = $('<div>',{class:"form-row"}).appendTo(angularTab);
@@ -836,7 +1479,7 @@
                 $('<select id="nr-db-field-angBackground">'+angColors+'</select>')
                     .css("width","100%")
                     .val(aTheme.background)
-                    .change(function() { aTheme.background = $(this).val(); changed(); })
+                    .on("change", function() { aTheme.background = $(this).val(); changed(); })
                     .appendTo(divBackStyle);
 
                 var divPalStyle = $('<div>',{class:"form-row"}).appendTo(angularTab);
@@ -848,7 +1491,7 @@
                 $('<select id="nr-db-field-angLook">'+lightdark+'</select>')
                     .css("width","100%")
                     .val(aTheme.palette || "light")
-                    .change(function() { aTheme.palette = $(this).val(); changed(); })
+                    .on("change", function() { aTheme.palette = $(this).val(); changed(); })
                     .appendTo(divPalStyle);
 
                 // Theme Tab
@@ -885,9 +1528,9 @@
                     '<option value="theme-custom">'+c_("style.custom")+'</option>'+
                     '</select>')
                 .css("width","100%")
-                .change(function() {
+                .on("change", function() {
                     if (!globalDashboardNode || globalDashboardNode.theme.name !== $(this).val()) {
-                        ensureDashboardNode(true);
+                        //ensureDashboardNode(true);
                         var theme = globalDashboardNode.theme.name.split('-')[1];
                         var baseColour = globalDashboardNode.theme[theme+'Theme'].baseColor;
                         var baseFont = globalDashboardNode.theme[theme+'Theme'].baseFont;
@@ -923,11 +1566,11 @@
 
                 var customThemeLibraryContainer = $('<div id="custom-theme-library-container">').appendTo(themeTab);
                 $('<label class="nr-db-theme-label">').text(c_("theme.custom-profile")).appendTo(customThemeLibraryContainer);
-                $('<input type="text" id="ui-sidebar-name" placeholder="profile name (not blank)">')
+                $('<input type="text" id="ui-sidebar-name" style="vertical-align:top;" placeholder="profile name (not blank)">')
                 .val(c_("theme.custom-profile-name"))
-                .change(function() {
+                .on("change", function() {
                     if (!globalDashboardNode || globalDashboardNode.theme.customTheme.name !== $(this).val()) {
-                        ensureDashboardNode(true);
+                        //ensureDashboardNode(true);
                         globalDashboardNode.theme.customTheme.name = $(this).val();
                         if (editor) {
                             editor.setValue(JSON.stringify({theme:globalDashboardNode.theme.themeState, site:globalDashboardNode.site}),1);
@@ -955,8 +1598,8 @@
                 var spanColorContainer = $('<span class="nr-db-color-pick-container"></span>').appendTo(baseColourItem);
 
                 $('<input id="base-color" class="nr-db-field-themeColor" type="color" value="#ffffff"/>')
-                .change(function() {
-                    ensureDashboardNode(true);
+                .on("change", function() {
+                    //ensureDashboardNode(true);
                     var value = $(this).val();
                     var lightThemeMatch = globalDashboardNode.theme.lightTheme.baseColor === value;
                     var darkThemeMatch = globalDashboardNode.theme.darkTheme.baseColor === value;
@@ -996,8 +1639,8 @@
                     '<option value="Trebuchet MS,Helvetica,sans-serif" style="font-family:Trebuchet MS,Helvetica,sans-serif">Trebuchet MS</option>'+
                     '<option value="Verdana,Verdana,Geneva,sans-serif" style="font-family:Verdana,Verdana,Geneva,sans-serif">Verdana</option>'+
                     '</select>')
-                    .change(function() {
-                        ensureDashboardNode(true);
+                    .on("change", function() {
+                        //ensureDashboardNode(true);
                         var theme = globalDashboardNode.theme.name.split('-')[1];
                         globalDashboardNode.theme[theme+'Theme'].baseFont = $(this).val();
                         globalDashboardNode.theme.themeState['base-font'] = {value:$(this).val()};
@@ -1036,7 +1679,7 @@
                     var styleLi = $('<li class="red-ui-dashboard-theme-item"><span>'+name+'</span></li>').appendTo(parentUl);
                     var spanColorContainer = $('<span class="nr-db-color-pick-container"></span>').appendTo(styleLi);
                     $('<input id="'+id+'" class="nr-db-field-themeColor" type="color" value="#ffffff"/>')
-                    .change(function() {
+                    .on("change", function() {
                         colourPickerChangeHandler($(this).attr('id'), $(this).val());
                     })
                     .appendTo(spanColorContainer);
@@ -1179,6 +1822,7 @@
                 }
 
                 var addTabOrLinkItem = function(container,i,item) {
+                    ensureDashboardNode(true);
                     // create node if needed
                     if (!item.node) {
                         var defaultItem = {
@@ -1249,16 +1893,249 @@
                         }
                     }
                     // buttons
-                    var buttonGroup = $('<div>',{class:"nr-db-sb-list-header-button-group"}).appendTo(titleRow);
+                    var buttonGroup = $('<div>',{class:"nr-db-sb-list-header-button-group",id: item.node.id}).appendTo(titleRow);
                     if (item.type === 'ui_tab') {
-                        var addGroupButton = $('<a href="#" class="editor-button editor-button-small nr-db-sb-list-header-button"><i class="fa fa-plus"></i> '+c_("layout.group")+'</a>').appendTo(buttonGroup);
+                        var addGroupButton = $('<a href="#" class="nr-db-sb-tab-add-group-button editor-button editor-button-small nr-db-sb-list-header-button" ><i class="fa fa-plus"></i> '+c_("layout.group")+'</a>').appendTo(buttonGroup);
                     }
-                    var editButton = $('<a href="#" class="editor-button editor-button-small nr-db-sb-list-header-button"><i class="fa fa-pencil"></i> '+c_("layout.edit")+'</a>').appendTo(buttonGroup);
+                    var editButton = $('<a href="#" class="nr-db-sb-tab-edit-button editor-button  editor-button-small nr-db-sb-list-header-button"><i class="fa fa-pencil"></i> '+c_("layout.edit")+'</a>').appendTo(buttonGroup);
                     editButton.on('click',function(evt) {
                         RED.editor.editConfig("", item.type, item.node.id);
                         evt.stopPropagation();
                         evt.preventDefault();
                     });
+
+                    // Dashboard layout tool
+                    if (item.type === 'ui_tab') {
+                        var layoutButton = $('<a href="#" class="nr-db-sb-tab-edit-layout-button editor-button editor-button-small nr-db-sb-list-header-button"><i class="fa fa-pencil"></i> '+c_("layout.layout")+'</a>').appendTo(buttonGroup);
+                        layoutButton.on('click',function(evt) {
+                            var editTabName = item.node.name ? item.node.name : item.node.id;
+                            var trayOptions = {
+                                title: c_("layout.layout-editor") + " : " + editTabName,
+                                width: Infinity,
+                                buttons: [
+                                    {
+                                        id: "node-dialog-cancel",
+                                        text: RED._("common.label.cancel"),
+                                        click: function() {
+                                            // clean editor
+                                            RED.tray.close();
+                                        }
+                                    },
+                                    {
+                                        id: "node-dialog-ok",
+                                        text: RED._("common.label.done"),
+                                        class: "primary",
+                                        click: function() {
+                                            // Save data after editing
+                                            saveGridDatas();
+                                            RED.tray.close();
+                                        }
+                                    }
+                                ],
+                                resize: function(dimensions) {},
+                                open: function(tray) {
+                                    // Get widget of specified tab from node information
+                                    tabDatas = getTabDataFromNodes(item.node.id);
+                                    // The width that can be handled by Layout is up to MAX_GROUP_WIDTH
+                                    // Groups exceeding the maximum width are not supported.
+                                    var tmpGroups = tabDatas.groups;
+                                    tmpGroups.sort(compareOrder);
+                                    var groups = [];
+                                    for (var cnt = 0; cnt < tmpGroups.length; cnt++) {
+                                        if (tmpGroups[cnt].width <= MAX_GROUP_WIDTH) {
+                                            groups.push(tmpGroups[cnt]);
+                                        }
+                                    }
+                                    tabDatas.groups = groups;
+
+                                    var editor = $('<div></div>',{addClass: 'nr-dashboard-layout-container-fluid'});
+                                    var row =  $('<div></div>',{addClass: 'nr-dashboard-layout-row'});
+                                    var span_num = Math.floor(12 / groups.length); // bootstrap grid 12 splits
+                                    span_num = span_num < 2 ? 2 : span_num; // max 6 groups per row
+                                    for (var cnt = 0; cnt < groups.length; cnt++) {
+                                        if (cnt !=0 && (cnt % 6) == 0) {
+                                            editor.append(row);
+                                            editor.append('<div><br></div>');
+                                            row = $('<div></div>',{addClass: 'nr-dashboard-layout-row'});
+                                        }
+                                        var span = $('<div></div>',{addClass: 'nr-dashboard-layout-span' + span_num});
+                                        var groupName = groups[cnt].name ? groups[cnt].name : groups[cnt].id;
+                                        var title = $('<div></div>', {
+                                            style: "margin-top:2px; margin-bottom:2px;"
+                                        });
+                                        var title_group = $('<div></div>', {
+                                            title: groupName,
+                                            style: "margin-left:4px; margin-right:8px; overflow:hidden;"
+                                        }).appendTo(title);
+                                        $("<b/>").text(groupName).appendTo(title_group);
+                                        var title_width = $('<div></div>', {
+                                            style: "text-align:right; margin-right:8px;"
+                                        }).appendTo(title);
+                                        $("<span/>", {
+                                            style: "margin_right: 8px;"
+                                        }).text(c_("layout.width")+': ').appendTo(title_width);
+                                        var changeWidth = $('<input>', {
+                                            id: 'change-width' + cnt,
+                                            value: groups[cnt].width,
+                                            style: 'width:30px;',
+                                            readonly: true,
+                                            'node-id': groups[cnt].id,
+                                        });
+                                        title_width.append(changeWidth);
+
+                                        title.css('white-space','nowrap');
+                                        title.css('overflow','hidden');
+                                        var gridstack = $('<div></div>', {
+                                            id: 'grid'+cnt,
+                                            addClass: 'grid-stack'
+                                        });
+                                        span.append(title);
+                                        span.append(gridstack);
+                                        row.append(span);
+                                    }
+                                    if (groups.length != 0) {
+                                        editor.append(row);
+                                    }
+
+                                    // Show layout editor in tray
+                                    var trayBody = tray.find('.red-ui-tray-body, .editor-tray-body');
+                                    trayBody.css('overflow','auto');
+                                    trayBody.append(editor);
+
+                                    /////////////////////////////////////////
+                                    // Editor screen generation
+                                    /////////////////////////////////////////
+                                    oldSpacer = [];
+                                    widthChange = [];
+                                    widgetResize = [];
+                                    widgetDrag = [];
+                                    for (var cnt=0; cnt < groups.length; cnt++) {
+                                        // Gridstack.js option
+                                        var options = {
+                                            acceptWidgets: true,
+                                            alwaysShowResizeHandle: true,
+                                            cellHeight: 42,
+                                            disableOneColumnMode : true,
+                                            float: true,
+                                            verticalMargin: 1
+                                        };
+                                        var gridID='#grid' + cnt;
+                                        // gridstack generation
+                                        $(gridID).gridstack(options);
+
+                                        // Clear the contents of Grid
+                                        var grid = $(gridID+'.grid-stack').data('gridstack');
+                                        grid.removeAll();
+                                        $(gridID).on("dropped", handleMove(grid));
+
+                                        // Set the width of the display area of gridstack
+                                        var groupWidth = Number(groups[cnt].width);
+                                        $(gridID+'.grid-stack').css("width", groupWidth * 40);
+                                        $(gridID+'.grid-stack').css("background-size", 100/groupWidth+"% 43px");
+                                        $(gridID+'.grid-stack').attr("node-id", groups[cnt].id);
+                                        $(gridID+'.grid-stack').attr("grid-column", groups[cnt].width);
+                                        grid.setColumn(groupWidth, true);
+
+                                        // Determination of placement position of widget of Grid
+                                        var widgets = groups[cnt].widgets;
+                                        widgets.sort(compareOrder);
+
+                                        var tbl = {};
+                                        for (var cnt2 = 0; cnt2 < widgets.length; cnt2++) {
+                                            // Set default value when there is auto width
+                                            if (widgets[cnt2].auto == true) {
+                                                widgets[cnt2].width = groupWidth;
+                                            // Adjust to the group width
+                                            } else if (widgets[cnt2].width > groupWidth) {
+                                                widgets[cnt2].width = groupWidth;
+                                            }
+                                            // Auto support
+                                            if (widgets[cnt2].auto === true || widgets[cnt2].type === 'ui_form') {
+                                                widgets[cnt2].height = getDefaultHeight(widgets[cnt2].id, groupWidth);
+                                            }
+                                            // Calculate coordinates to be placed
+                                            var point = search_point(Number(widgets[cnt2].width), Number(widgets[cnt2].height), groupWidth, 256, tbl);
+                                            if (point) {
+                                                widgets[cnt2].x = point.x;
+                                                widgets[cnt2].y = point.y;
+                                            }
+                                        }
+
+                                        var items = GridStackUI.Utils.sort(widgets);
+                                        items.forEach(function (node) {
+                                            var minHeight = null;
+                                            var maxHeight = null;
+                                            // ui_form is fixed to height 2
+                                            if (node.type === 'ui_form') {
+                                                minHeight = node.height;
+                                                maxHeight = node.height;
+                                            }
+                                            if (node.type !== 'ui_spacer') {
+                                                var dispNode = RED.nodes.node(node.id);
+                                                var dispType = dispNode._def.paletteLabel;
+                                                var dispLabel = dispNode._def.label;
+                                                try {
+                                                    dispLabel = (typeof dispLabel === "function" ? dispLabel.call(dispNode) : dispLabel)||"";
+                                                }
+                                                catch(err) {
+                                                    console.log("Definition error: " + node.type + ".label",err);
+                                                    dispLabel = dispType;
+                                                }
+
+                                                var item = $('<div></div>', {
+                                                    'data-noderedtype': node.type,
+                                                    'data-noderedid': node.id,
+                                                    'data-nodereddisptype': dispType,
+                                                    'data-nodereddisplabel': dispLabel,
+                                                    'data-noderedsizeauto': node.auto
+                                                });
+                                                var itemContent = $('<div></div>', {
+                                                    addClass: 'grid-stack-item-content',
+                                                    title: dispLabel + ':' + dispType
+                                                });
+
+                                                if (node.auto === true) {
+                                                    itemContent.append('<i class="fa fa-unlock nr-dashboard-layout-resize-enable" title="'+c_("layout.auto")+'"></i>');
+                                                } else {
+                                                    itemContent.append('<i class="fa fa-lock nr-dashboard-layout-resize-disable" title="'+c_("layout.manual")+'"></i>');
+                                                }
+                                                itemContent.append('<b>'+ dispLabel +'</b><br/>'+ dispType);
+                                                item.append(itemContent);
+                                                grid.addWidget(
+                                                    item,
+                                                    node.x, node.y, node.width, node.height, false, null, null,
+                                                    minHeight, maxHeight, node.id);
+                                            } else {
+                                                // Record the spacer node ID to be deleted
+                                                oldSpacer.push(node.id);
+                                            }
+                                        });
+
+                                        $(gridID+'.grid-stack > .grid-stack-item:visible').each( function(idx, el) {
+                                            el = $(el);
+                                            var node = el.data('_gridstack_node');
+                                            var auto = (el[0].dataset.noderedsizeauto == 'true') ? true : false;
+                                            grid.resizable(el, !auto);
+                                        });
+
+                                        // Group width change
+                                        widthChange.push(new changeGroupWidth(cnt));
+                                        // Resize widget in group (start event)
+                                        widgetResize.push(new resizeGroupWidget(cnt));
+                                        // Dragging widgets in a group (start event)
+                                        widgetDrag.push(new dragGroupWidget(cnt));
+                                    }
+                                    $('.grid-stack>.grid-stack-item>.grid-stack-item-content>.nr-dashboard-layout-resize-disable').on('click',layoutResizeDisable);
+                                    $('.grid-stack>.grid-stack-item>.grid-stack-item-content>.nr-dashboard-layout-resize-enable').on('click',layoutResizeEnable);
+                                },
+                                close: function() {},
+                                show: function() {}
+                            }
+                            RED.tray.show(trayOptions);
+                            evt.stopPropagation();
+                            evt.preventDefault();
+                        });
+                    }
 
                     if (item.type === 'ui_tab') {
                         var content = $('<div>',{class:"nr-db-sb-group-list-container"}).appendTo(container);
@@ -1307,6 +2184,11 @@
                                         RED.nodes.updateConfigNodeUsers(group.node);
                                     }
                                 }
+                                else {
+                                    if (group.node.order === undefined) {
+                                        group.node.order = i+1;
+                                    }
+                                }
                                 var groupNode = group.node;
                                 elementParents[groupNode] = item.node.id;
                                 var titleRow = $('<div>',{class:"nr-db-sb-list-header nr-db-sb-group-list-header"}).appendTo(container);
@@ -1315,7 +2197,7 @@
                                 $('<i class="nr-db-sb-icon nr-db-sb-group-icon fa fa-table"></i>').appendTo(titleRow);
                                 var title = $('<span class="nr-db-sb-title">').text(groupNode.name||groupNode.id||"").appendTo(titleRow);
                                 listElements[groupNode.id] = container;
-                                var buttonGroup = $('<div>',{class:"nr-db-sb-list-header-button-group"}).appendTo(titleRow);
+                                var buttonGroup = $('<div>',{class:"nr-db-sb-list-header-button-group",id:groupNode.id}).appendTo(titleRow);
                                 var spacerButton = $('<a href="#" class="editor-button editor-button-small nr-db-sb-list-header-button"><i class="fa fa-plus"></i> '+c_("layout.spacer")+'</a>').appendTo(buttonGroup);
                                 spacerButton.on('click',function(evt) {
                                     var spaceNode = {
@@ -1344,7 +2226,7 @@
                                     evt.stopPropagation();
                                     evt.preventDefault();
                                 });
-                                var editButton = $('<a href="#" class="editor-button editor-button-small nr-db-sb-list-header-button"><i class="fa fa-pencil"></i> '+c_("layout.edit")+'</a>').appendTo(buttonGroup);
+                                var editButton = $('<a href="#" class="nr-db-sb-edit-group-button editor-button editor-button-small nr-db-sb-list-header-button"><i class="fa fa-pencil"></i> '+c_("layout.edit")+'</a>').appendTo(buttonGroup);
                                 var content = $('<div>',{class:"nr-db-sb-widget-list-container"}).appendTo(container);
                                 if (!listStates.hasOwnProperty(groupNode.id) || !listStates[groupNode.id]) {
                                     content.hide();
@@ -1808,7 +2690,7 @@
                             tabContainer.editableList('addItem',tab);
                         });
                     }
-                    ensureDashboardNode(true);
+                    //ensureDashboardNode(true);
                     if (globalDashboardNode) {
                         $("#nr-db-field-title").val(globalDashboardNode.site.name);
                         $("#nr-db-field-allowSwipe").val(globalDashboardNode.site.allowSwipe || "false");
@@ -1835,6 +2717,7 @@
                         $("#nr-db-field-angAccents").val(globalDashboardNode.theme.angularTheme.accents || "blue");
                         $("#nr-db-field-angWarn").val(globalDashboardNode.theme.angularTheme.warn || "red");
                         $("#nr-db-field-angBackground").val(globalDashboardNode.theme.angularTheme.background || "grey");
+                        $("#nr-db-field-angLook").val(globalDashboardNode.theme.angularTheme.palette || "light");
 
                         $("#nr-db-field-theme").val(globalDashboardNode.theme.name);
                         $("#ui-sidebar-name").val(globalDashboardNode.theme.customTheme.name);
@@ -1890,41 +2773,6 @@
                             // i.e. has the theme been customised compared
                             // to what is stored
                             var editorObject = JSON.parse(editor.getValue());
-                            // var objectsEqual = true;
-                            // var keysEqual = true;
-                            // var editorKeys = Object.keys(editorObject);
-                            // var themeKeys = Object.keys(editorObject.theme);
-                            // var siteKeys = Object.keys(editorObject.site);
-                            // var dashNodeKeys = Object.keys(globalDashboardNode.theme.themeState);
-
-                            // // Test equality
-                            // for (var i=0; i<themeKeys.length; i++) {
-                            //     if (themeKeys[i] !== dashNodeKeys[i]) {
-                            //         keysEqual = false;
-                            //         break;
-                            //     }
-                            // }
-                            // if (keysEqual) {
-                            //     for (var j=0; j<themeKeys.length; j++) {
-                            //         var key = themeKeys[j];
-                            //         if (editorObject.theme[key] !== globalDashboardNode.theme.themeState[key]) {
-                            //             objectsEqual = false;
-                            //             break;
-                            //         }
-                            //     }
-                            // }
-                            //
-                            // if (!objectsEqual) {
-                            //     globalDashboardNode.theme.themeState = editorObject.theme;
-                            // }
-                            //
-                            // //If custom theme is chosen, update the elements and current state
-                            // if (globalDashboardNode.theme.name === 'theme-custom') {
-                            //     //globalDashboardNode.theme.customTheme.baseColor = globalDashboardNode.theme.themeState['base-color'].default;
-                            //     generateColours(globalDashboardNode.theme.customTheme.baseColor);
-                            //     //setColourPickerColour("base-color", globalDashboardNode.theme.customTheme.baseColor);
-                            //     if (!objectsEqual) { RED.nodes.dirty(true); }
-                            // }
 
                             //Update theme object if necessary
                             if (JSON.stringify(editorObject.theme) !== JSON.stringify(globalDashboardNode.theme.themeState)) {
@@ -2047,6 +2895,29 @@
                 };
                 RED.events.on("editor:save",editSaveEventHandler);
 
+                // Dashboard layout tool
+                layoutUpdateEventHandler = function(node) {
+                    if (/^ui_/.test(node.type) && node.type !== 'ui_link' && node.type !== 'ui_toast' && node.type !== 'ui_ui_control' && node.type !== 'ui_audio' && node.type !== 'ui_base' && node.type !== 'ui_group' && node.type !== 'ui_tab') {
+                        if (listElements[node.id]) {
+                            if (node.group != elementParents[node.id]) {
+                                // Moved to a different group
+                                if (groupLists[elementParents[node.id]]) {
+                                    groupLists[elementParents[node.id]].editableList('removeItem',listElements[node.id].data('data'))
+                                }
+                                if (groupLists[node.group]) {
+                                    groupLists[node.group].editableList('removeItem',node)
+                                    groupLists[node.group].editableList('addItem',node);
+                                    groupLists[node.group].editableList('sort',function(a,b) {return a.order-b.order;});
+                                }
+                            }
+                            else {
+                                groupLists[node.group].editableList('sort',function(a,b) {return a.order-b.order;});
+                            }
+                        }
+                    }
+                };
+                RED.events.on("layout:update",layoutUpdateEventHandler);
+
                 var pendingAdd = [];
                 var pendingAddTimer = null;
 
@@ -2073,6 +2944,7 @@
                         }
                         return 0
                     });
+                    var updateList = {};
                     for (var i=0; i<pendingAdd.length; i++) {
                         var node = pendingAdd[i];
                         if (node.type === "ui_tab") {
@@ -2099,6 +2971,9 @@
                                 }
                                 if (groupLists[node.group]) {
                                     groupLists[node.group].editableList('addItem',node)
+                                    if (node.order >= 0) {
+                                        updateList[node.group] = true;
+                                    }
                                 }
                                 else {
                                     refreshOrphanedWidgets();
@@ -2106,6 +2981,12 @@
                             }
                         }
                     }
+                    Object.keys(updateList).forEach(function (group) {
+                        var list = groupLists[group];
+                        if (list) {
+                            list.editableList("sort", function(a,b) {return a.order-b.order;});
+                        }
+                    });
                     pendingAdd = [];
                 }
 
@@ -2273,8 +3154,8 @@
                     borderRadius: "4px",
                     display:"none"
                 }).appendTo(document.body);
-                var closeTimer;
 
+                var closeTimer;
                 container.on('mouseleave',function(evt) {
                     closeTimer = setTimeout(function() {
                         container.fadeOut(200, function() { $(this).remove(); });
@@ -2295,6 +3176,7 @@
                 }, function() {
                     $(this).css('text-decoration', 'none');
                 });
+
                 label.click(function(e) {
                     var group = $(that.options.group).val();
                     var groupNode = null;
@@ -2317,7 +3199,7 @@
                             $(this).remove();
                         });
                     },100)
-               });
+                });
 
                 var buttonRow = $('<div>',{style:"text-align:right; height:25px;"}).appendTo(container);
 
@@ -2417,7 +3299,7 @@
 })(jQuery);
 </script>
 
-<script type="text/x-red" data-template-name="ui_base">
+<script type="text/html" data-template-name="ui_base">
     <div class='form-row'>
         This <i>ui_base</i> node is the main node that all<br/>other dashboard widget nodes communicate to.<br/>
         <br/>One instance is required to support the dashboard.<br/>
@@ -2426,5 +3308,5 @@
     </div>
 </script>
 
-<script type="text/x-red" data-help-name="ui_base">
+<script type="text/html" data-help-name="ui_base">
 </script>

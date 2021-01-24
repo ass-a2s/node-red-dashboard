@@ -25,7 +25,12 @@
             "link" : "link",
             "group" : "group",
             "edit" : "edit",
-            "spacer": "spacer"
+            "spacer": "spacer",
+            "layout" : "layout",
+            "layout-editor" : "Dashboard layout editor",
+            "width" : "Width",
+            "auto": "auto-sizing",
+            "manual": "manual resize"
         },
         "theme" : {
             "style" : "Style",
@@ -82,7 +87,8 @@
         },
         "lock" : {
             "clicked" : "Click to show side menu",
-            "locked" : "Always show side menu"
+            "locked" : "Always show side menu",
+            "locked-icon" : "Always show icons only"
         },
         "temp" : {
             "allow-theme" : "Node-RED theme everywhere",

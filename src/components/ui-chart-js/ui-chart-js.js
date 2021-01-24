@@ -11,16 +11,6 @@ angular.module('ui').directive('uiChartJs', [ '$timeout', '$interpolate',
                     var type = scope.$eval('me.item.look');
                     var useOneColor = scope.$eval('me.item.useOneColor');
 
-                    scope.$watchGroup(['me.item.legend','me.item.interpolate','me.item.ymin','me.item.ymax','me.item.xformat','me.item.dot','me.item.cutout','me.item.nodata','me.item.animation','me.item.spanGaps','me.item.options'], function (newValue) {
-                        scope.config = loadConfiguration(type, scope);
-                    });
-
-                    scope.$watch('me.item.look', function (newValue) {
-                        if ((type === "line") || (newValue === "line")) { delete scope.config; }
-                        type = newValue;
-                        scope.config = loadConfiguration(type, scope);
-                    });
-
                     // Chart.Tooltip.positioners = {};
                     // Chart.Tooltip.positioners.cursor = function(chartElements, coordinates) {
                     //     return coordinates;
@@ -57,6 +47,14 @@ angular.module('ui').directive('uiChartJs', [ '$timeout', '$interpolate',
                         }
                     });
 
+                    // Watch for any changes to controls
+                    scope.$watchGroup(['me.item.legend','me.item.interpolate','me.item.ymin','me.item.ymax','me.item.xformat','me.item.dot','me.item.cutout','me.item.nodata','me.item.animation','me.item.spanGaps','me.item.options','me.item.look'], function (newValue, oldValue) {
+                        type = newValue[11];
+                        if (JSON.stringify(newValue) !== JSON.stringify(oldValue)) {
+                            scope.config = loadConfiguration(type, scope);
+                        }
+                    });
+
                     // When new values arrive, update the chart
                     scope.$watch('me.item.value', function (newValue) {
                         if (newValue !== undefined && newValue.length > 0) {
@@ -81,18 +79,16 @@ angular.module('ui').directive('uiChartJs', [ '$timeout', '$interpolate',
                                 // Ensure the data array is of the correct length
                                 if (seriesIndex > scope.config.data.length) { scope.config.data.push([]); }
 
+                                // Remove old data point(s)
+                                if (newValue.remove) { scope.config.data[seriesIndex].splice(0, newValue.remove); }
+
                                 // Add the data
                                 scope.config.data[seriesIndex].push(newValue.values.data);
-
-                                // Remove old data point(s)
-                                for (var a=0; a < (newValue.remove || 0); a++) {
-                                    scope.config.data[seriesIndex].shift();
-                                }
                             }
                             else {
                                 // Bar charts and non update line charts replace the data
                                 if (type === "line") {
-                                    scope.config = loadConfiguration(type, scope);
+                                    //scope.config = loadConfiguration(type, scope);
                                     if (newValue.values.data[0][0] === undefined) {
                                         var flag = false;
                                         for (var i=1; i < newValue.values.data.length; i++ ) {
@@ -115,13 +111,32 @@ angular.module('ui').directive('uiChartJs', [ '$timeout', '$interpolate',
                                 if (type === "pie") {
                                     scope.config.colours = scope.barColours;
                                 }
+                                else if (type === "polar-area") {
+                                    if (scope.config.options && scope.config.options.useDifferentColor) {
+                                        scope.config.colours = scope.barColours;
+                                        var colors = [];
+                                        scope.barColours.map(function (v) {
+                                            var item = Object.assign({}, v);
+                                            var bgColor = [];
+                                            item.backgroundColor.map(function (c) {
+                                                var op = (0.7 / newValue.values.series.length) + 0.1;
+                                                var rgb = tinycolor(c).toRgb();
+                                                var nc = "rgba("+rgb.r+","+rgb.g+","+rgb.b+","+op+")";
+                                                bgColor.push(nc);
+                                            });
+                                            item.backgroundColor = bgColor;
+                                            colors.push(item);
+                                        });
+                                        scope.config.colours = colors;
+                                    }
+                                }
                                 scope.config.data = newValue.values.data;
                                 scope.config.series = newValue.values.series;
                                 scope.config.labels = newValue.values.labels;
                             }
                         }
                         else {
-                            // Reset config and clear data
+                            // Clear data and reset config
                             delete scope.config;
                             scope.config = loadConfiguration(type, scope);
                         }
@@ -129,20 +144,39 @@ angular.module('ui').directive('uiChartJs', [ '$timeout', '$interpolate',
                 }, 0);
                 $timeout(function() {
                     scope.$broadcast("$resize");
-                }, 100);
+                }, 50);
             }
         }
     }
 ]);
 
 function loadConfiguration(type,scope) {
-    var yMin = parseFloat(scope.$eval('me.item.ymin'));
-    var yMax = parseFloat(scope.$eval('me.item.ymax'));
-    var legend = scope.$eval('me.item.legend');
-    var interpolate = scope.$eval('me.item.interpolate');
-    var xFormat = scope.$eval('me.item.xformat');
-    var showDot = scope.$eval('me.item.dot');
-    var bColours = scope.$eval('me.item.colors') || ['#1F77B4', '#AEC7E8', '#FF7F0E', '#2CA02C', '#98DF8A', '#D62728', '#FF9896', '#9467BD', '#C5B0D5'];
+    //console.log("LOAD CONFIG",type,scope);
+    var config = scope.config || { data:[], series:[], labels:[], nodata:true }
+    var item = scope.$eval('me.item');
+    var yMin = parseFloat(item.ymin);
+    var yMax = parseFloat(item.ymax);
+    var xFormat = item.xformat;
+    var themeState = scope.$eval('main.selectedTab.theme.themeState');
+    //var themeState = item.theme ? item.theme.themeState : false;
+    var useUTC = item.useUTC || false;
+
+    config.options = {
+        animation: item.animation,
+        spanGaps: item.spanGaps,
+        scales: {},
+        legend: false,
+        responsive: true,
+        maintainAspectRatio: false,
+        useDifferentColor: item.useDifferentColor
+    };
+    if (type === 'pie') {
+        config.options.cutoutPercentage = item.cutout || 0;
+        config.options.elements = { arc: { borderWidth:0 }};
+    }
+
+    //Build colours array
+    var bColours = item.colors || ['#1F77B4', '#AEC7E8', '#FF7F0E', '#2CA02C', '#98DF8A', '#D62728', '#FF9896', '#9467BD', '#C5B0D5'];
     var baseColours = bColours.concat([
         '#7EB3C6','#BB9A61','#3F8FB9','#57A13F',
         '#BC5879','#6DC2DF','#D7D185','#91CA96',
@@ -150,29 +184,6 @@ function loadConfiguration(type,scope) {
         '#61A240','#AA3167','#9D6D5E','#3498DB',
         '#EC7063','#DAF7A6','#FFC300','#D98880',
         '#48C9B0','#7FB3D5','#F9E79F','#922B21']);
-    var config = scope.config || {};
-    var themeState = scope.$eval('me.item.theme.themeState');
-    var useOneColor = scope.$eval('me.item.useOneColor');
-    if (!scope.config) {
-        config.data = [];
-        config.series = [];
-        config.labels = [];
-        config.nodata = true;
-    }
-    config.options = {
-        animation: scope.$eval('me.item.animation'),
-        spanGaps: scope.$eval('me.item.spanGaps'),
-        scales: {},
-        legend: false,
-        responsive: true,
-        maintainAspectRatio: false
-    };
-    if (type === 'pie') {
-        config.options.cutoutPercentage = scope.$eval('me.item.cutout') || 0;
-        config.options.elements = { arc: { borderWidth:0 }};
-    }
-
-    //Build colours array
     config.colours = config.colours || baseColours;
     scope.barColours = [];
     scope.lineColours = [];
@@ -211,7 +222,12 @@ function loadConfiguration(type,scope) {
                     'quarter': xFormat,
                     'year': xFormat
                 }
-            };
+            }
+        }
+        if (useUTC === true) {
+            config.options.scales.xAxes[0].time.parser = function (m) {
+                return moment.utc(m);
+            }
         }
 
         config.options.tooltips = {
@@ -231,9 +247,11 @@ function loadConfiguration(type,scope) {
                             largest = tooltip[i].xLabel;
                         }
                     }
-                    if (xFormat !== "auto") { return moment(largest).format(xFormat); }
+                    var mo = moment(largest);
+                    if (useUTC === true) { mo = moment.utc(largest); }
+                    if (xFormat !== "auto") { return mo.format(xFormat); }
                     else {
-                        return moment(largest).calendar(null, {
+                        return mo.calendar(null, {
                             sameDay: 'HH:mm:ss',
                             nextDay: 'HH:mm',
                             lastDay: 'HH:mm',
@@ -252,11 +270,19 @@ function loadConfiguration(type,scope) {
                 fill: false
             },
             point: {
-                radius: showDot ? 2 : 0,
+                radius: item.dot ? 2 : 0,
                 hitRadius: 4,
                 hoverRadius: 4 }
         }
-        switch (interpolate) {
+        switch (item.interpolate) {
+            case 'cubic': {
+                config.options.elements.line.cubicInterpolationMode = "default";
+                break;
+            }
+            case 'monotone': {
+                config.options.elements.line.cubicInterpolationMode = "monotone";
+                break;
+            }
             case 'linear': {
                 config.options.elements.line.tension = 0;
                 break;
@@ -351,11 +377,29 @@ function loadConfiguration(type,scope) {
 
     // Configure legend
     //if (type !== 'bar' && type !== 'horizontalBar' && JSON.parse(legend)) {
-    if (legend) {
+    if ((item.legend === true) || (item.legend === "true")) {
+        config.overrides = [];
         config.options.legend = {
             display:true,
             position:'top',
-            labels: { boxWidth:10, fontSize:12, padding:8 }
+            labels: { boxWidth:10, fontSize:12, padding:8 },
+            onClick: function(e, legendItem) {
+                var index = legendItem.datasetIndex || 0;
+                var ci = this.chart;
+                var meta;
+                if ((type === "pie") || (type === "polar-area")) {
+                    for (var l = 0; l < ci.config.data.datasets.length; l++) {
+                        meta = ci.getDatasetMeta(l);
+                        meta.data[legendItem.index].hidden = meta.data[legendItem.index].hidden === false ? true : false;
+                    }
+                }
+                else {
+                    meta = ci.getDatasetMeta(index);
+                    meta.hidden = meta.hidden === null ? !ci.data.datasets[index].hidden : null;
+                }
+                config.overrides[index] = {hidden:meta.hidden};
+                ci.update();
+            }
         };
         if ((type === "pie") || (type === "polar-area") || (type === "radar")) {
             config.options.legend.position = 'left';
@@ -366,7 +410,26 @@ function loadConfiguration(type,scope) {
         }
     }
 
+    // Configure custom tooltip
+    if ((type === "pie") || (type === "polar-area")) {
+        // show series instead of labels
+        config.options.tooltips = {
+            callbacks: {
+                title: function(item, data) {
+                    return data.labels[item[0].index];
+                },
+                label: function(item, data) {
+                    var ds = data.datasets[item.datasetIndex];
+                    var label = ds.label || "";
+                    if (label) { label += ": "; }
+                    label += ds.data[item.index];
+                    return label;
+                }
+            }
+        };
+    }
+
     // Allow override of any options if really required.
-    config.options = Object.assign({},config.options,scope.$eval('me.item.options'));
+    config.options = Object.assign({},config.options,item.options);
     return config;
 }

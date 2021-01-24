@@ -22,7 +22,7 @@ angular.module('ui').controller('uiCardPanelController', ['uiSizes', '$timeout',
                 refreshSizes();
                 refreshInProgress = false;
                 if (done) { done(); }
-            }, 10);
+            }, 25);
         };
 
         var rows;
@@ -34,7 +34,7 @@ angular.module('ui').controller('uiCardPanelController', ['uiSizes', '$timeout',
                 var result = size.split('x');
                 var width = Math.max(1, Math.min(sizes.columns($scope.group), result ? parseInt(result[0]) || defaultWidth : defaultWidth));
                 var height = Math.max(1, result ? parseInt(result[1]) || defaultHeight : defaultHeight);
-                if ((parseInt(result[1]) <= 0) && (child.attr('ui-template') !== undefined)) { /*is template node*/
+                if ((parseInt(result[1]) == 0) && (child.attr('ui-template') !== undefined)) { /*is template node*/
                     // template node will size the height based upon it's content
                     // - child.height() defaults to calculating based on width of group
                     var ch = child.height() * parseInt($scope.group.header.config.width)/width;
@@ -47,8 +47,19 @@ angular.module('ui').controller('uiCardPanelController', ['uiSizes', '$timeout',
                         if (t.indexOf('<b') !== -1) { ch = 1; }
                         if (t.indexOf('<h') !== -1) { ch = 1; }
                         if (t.indexOf('<f') !== -1) { ch = 1; }
+                        if (t.indexOf('<iframe') !== -1) {
+                            ch = parseInt($scope.group.header.config.width* 3/4 * (sizes.cx + sizes.sx));
+                            // if (t.indexOf("width=") !== -1) {
+                            //     ch = t.split('width="')[1];
+                            //     ch = ch.split('"')[0];
+                            //     ch = parseInt(ch);
+                            // }
+                        }
                     }
                     height = Math.ceil(ch / (sizes.cy + sizes.sy));
+                }
+                if ((parseInt(result[1]) < 0) && (child.attr('ui-template') !== undefined)) {
+                    height = 0;
                 }
 
                 var position = getNextPosition(width, height);
